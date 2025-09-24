@@ -48,10 +48,13 @@ function TherapistsManagementPage() {
   const loadTherapists = () => {
     // Load registered therapist users
     const registeredUsers = JSON.parse(localStorage.getItem('mindcare_registered_users') || '[]');
-    const therapistUsers = registeredUsers.filter((u: any) => u.role === 'therapist');
+    const therapistUsers = registeredUsers.filter((u: any) => 
+      u.role === 'therapist' && u.status !== 'deleted'
+    );
     
     // Load therapist services
     const therapistServices = JSON.parse(localStorage.getItem('mindcare_therapist_services') || '[]');
+    const activeServices = therapistServices.filter((s: any) => s.status !== 'deleted');
     
     // Demo therapist
     const demoTherapist = {
@@ -76,7 +79,7 @@ function TherapistsManagementPage() {
     
     // Add registered therapists
     therapistUsers.forEach((therapistUser: any) => {
-      const service = therapistServices.find((s: any) => s.therapistId === therapistUser.id);
+      const service = activeServices.find((s: any) => s.therapistId === therapistUser.id);
       
       const therapistData: Therapist = {
         id: therapistUser.id,
@@ -87,7 +90,8 @@ function TherapistsManagementPage() {
         experience: therapistUser.experience || service?.experience || '0 years',
         licenseNumber: therapistUser.licenseNumber || service?.licenseNumber || 'N/A',
         hourlyRate: therapistUser.hourlyRate || service?.chargesPerSession || 100,
-        status: therapistUser.status === 'approved' ? 'active' : 
+        status: therapistUser.status === 'suspended' ? 'suspended' :
+                therapistUser.status === 'approved' ? 'active' : 
                 therapistUser.status === 'pending' ? 'pending' : 'inactive',
         verified: therapistUser.verified || false,
         joinDate: therapistUser.joinDate || new Date().toISOString().split('T')[0],
@@ -114,8 +118,8 @@ function TherapistsManagementPage() {
   };
 
   const handleTherapistAction = (therapistId: string, action: string) => {
-    if (action === 'suspended' || action === 'activated') {
-      const newStatus = action === 'suspended' ? 'suspended' : 'active';
+    if (action === 'suspend' || action === 'activate') {
+      const newStatus = action === 'suspend' ? 'suspended' : 'active';
       
       // Update local state
       setTherapists(prev => prev.map(t => 
@@ -125,7 +129,7 @@ function TherapistsManagementPage() {
       // Update registered users in localStorage
       const registeredUsers = JSON.parse(localStorage.getItem('mindcare_registered_users') || '[]');
       const updatedUsers = registeredUsers.map((u: any) => 
-        u.id === therapistId ? { ...u, status: newStatus } : u
+        u.id === therapistId ? { ...u, status: newStatus === 'active' ? 'approved' : newStatus } : u
       );
       localStorage.setItem('mindcare_registered_users', JSON.stringify(updatedUsers));
       
@@ -136,33 +140,83 @@ function TherapistsManagementPage() {
       );
       localStorage.setItem('mindcare_therapist_services', JSON.stringify(updatedServices));
       
-      // Update available therapists for booking
+      // Update available therapists for booking based on status
+      const availableTherapists = JSON.parse(localStorage.getItem('mindcare_therapists') || '[]');
+      
       if (newStatus === 'suspended') {
-        const availableTherapists = JSON.parse(localStorage.getItem('mindcare_therapists') || '[]');
+        // Remove from available therapists
         const updatedAvailableTherapists = availableTherapists.filter((t: any) => t.id !== therapistId);
         localStorage.setItem('mindcare_therapists', JSON.stringify(updatedAvailableTherapists));
+      } else if (newStatus === 'active') {
+        // Add back to available therapists if not already there
+        const therapistExists = availableTherapists.some((t: any) => t.id === therapistId);
+        if (!therapistExists) {
+          // Find therapist data to add back
+          const therapistUser = registeredUsers.find((u: any) => u.id === therapistId);
+          const therapistService = therapistServices.find((s: any) => s.therapistId === therapistId);
+          
+          if (therapistUser && therapistService) {
+            const therapistForBooking = {
+              id: therapistId,
+              name: therapistUser.name,
+              title: therapistService.qualification,
+              specialization: therapistService.specialization,
+              experience: parseInt(therapistUser.experience?.split(' ')[0] || '0') || 0,
+              rating: 4.8,
+              reviewCount: 0,
+              hourlyRate: therapistUser.hourlyRate || therapistService.chargesPerSession,
+              location: 'Online',
+              avatar: therapistService.profilePicture || 'https://images.pexels.com/photos/5327580/pexels-photo-5327580.jpeg?auto=compress&cs=tinysrgb&w=150',
+              verified: true,
+              nextAvailable: 'Today, 2:00 PM',
+              bio: therapistUser.bio || therapistService.bio,
+              languages: therapistService.languages || ['English']
+            };
+            
+            const updatedAvailableTherapists = [...availableTherapists, therapistForBooking];
+            localStorage.setItem('mindcare_therapists', JSON.stringify(updatedAvailableTherapists));
+          }
+        }
       }
-    } else if (action === 'deleted') {
+      
+      // Force reload of therapists data
+      setTimeout(() => {
+        loadTherapists();
+      }, 100);
+      
+    } else if (action === 'delete') {
       // Remove from local state
       setTherapists(prev => prev.filter(t => t.id !== therapistId));
       
       // Remove from registered users
       const registeredUsers = JSON.parse(localStorage.getItem('mindcare_registered_users') || '[]');
-      const updatedUsers = registeredUsers.filter((u: any) => u.id !== therapistId);
+      const updatedUsers = registeredUsers.map((u: any) => 
+        u.id === therapistId ? { ...u, status: 'deleted' } : u
+      );
       localStorage.setItem('mindcare_registered_users', JSON.stringify(updatedUsers));
       
       // Remove therapist services
       const therapistServices = JSON.parse(localStorage.getItem('mindcare_therapist_services') || '[]');
-      const updatedServices = therapistServices.filter((s: any) => s.therapistId !== therapistId);
+      const updatedServices = therapistServices.map((s: any) => 
+        s.therapistId === therapistId ? { ...s, status: 'deleted' } : s
+      );
       localStorage.setItem('mindcare_therapist_services', JSON.stringify(updatedServices));
       
       // Remove from available therapists for booking
       const availableTherapists = JSON.parse(localStorage.getItem('mindcare_therapists') || '[]');
       const updatedAvailableTherapists = availableTherapists.filter((t: any) => t.id !== therapistId);
       localStorage.setItem('mindcare_therapists', JSON.stringify(updatedAvailableTherapists));
+      
+      // Force reload of therapists data
+      setTimeout(() => {
+        loadTherapists();
+      }, 100);
     }
     
-    toast.success(`Therapist ${action} successfully`);
+    const actionText = action === 'suspend' ? 'suspended' : 
+                     action === 'activate' ? 'activated' : 
+                     action === 'delete' ? 'deleted' : action;
+    toast.success(`Therapist ${actionText} successfully`);
   };
 
   const filteredTherapists = therapists.filter(therapist => {
@@ -408,29 +462,37 @@ function TherapistsManagementPage() {
                   >
                     <Eye className="w-4 h-4" />
                   </button>
-                  <button className="p-2 text-gray-500 hover:text-green-600 transition-colors">
-                    <Edit className="w-4 h-4" />
-                  </button>
                 </div>
                 <div className="flex space-x-2">
                   {therapist.status === 'active' ? (
                     <button
-                      onClick={() => handleTherapistAction(therapist.id, 'suspended')}
+                      onClick={() => handleTherapistAction(therapist.id, 'suspend')}
                       className="p-2 text-gray-500 hover:text-yellow-600 transition-colors"
+                      title="Suspend therapist"
                     >
                       <Ban className="w-4 h-4" />
                     </button>
+                  ) : therapist.status === 'suspended' ? (
+                    <button
+                      onClick={() => handleTherapistAction(therapist.id, 'activate')}
+                      className="p-2 text-gray-500 hover:text-green-600 transition-colors"
+                      title="Activate therapist"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                    </button>
                   ) : (
                     <button
-                      onClick={() => handleTherapistAction(therapist.id, 'activated')}
+                      onClick={() => handleTherapistAction(therapist.id, 'activate')}
                       className="p-2 text-gray-500 hover:text-green-600 transition-colors"
+                      title="Activate therapist"
                     >
                       <CheckCircle className="w-4 h-4" />
                     </button>
                   )}
                   <button
-                    onClick={() => handleTherapistAction(therapist.id, 'deleted')}
+                    onClick={() => handleTherapistAction(therapist.id, 'delete')}
                     className="p-2 text-gray-500 hover:text-red-600 transition-colors"
+                    title="Delete therapist"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
