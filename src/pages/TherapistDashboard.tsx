@@ -69,13 +69,6 @@ function TherapistDashboard() {
       change: '+3 this month'
     },
     {
-      title: 'Unread Messages',
-      value: '5',
-      icon: MessageSquare,
-      color: 'from-purple-500 to-pink-500',
-      change: '2 urgent'
-    },
-    {
       title: "This Week's Sessions",
       value: '18',
       icon: BarChart3,
